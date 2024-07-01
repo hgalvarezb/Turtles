@@ -1,0 +1,543 @@
+---
+title: "Data base Law Enforcement Reports Sea Turtles"
+author: "Hernán G. Álvarez and Jessica Kahler"
+date: "2024-06-30"
+always_allow_html: true
+output:
+  html_document:
+    theme: cerulean
+    toc: yes
+    toc_float: yes
+  pdf_document:
+    toc: yes
+  word_document:
+    toc: yes
+---
+```{r setup, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r # Loading libraries, include=FALSE}
+library(tidyverse)
+library(readxl)
+library(dplyr)
+library(janitor)
+library(knitr)
+library(kableExtra)
+library(tinytex)
+library(tm)
+library(tidytext)
+library(webshot)
+# Ensure webshot is configured correctly
+webshot::install_phantomjs()
+options(knitr.table.format = "html")
+
+```
+
+# 2018 and 2022 Law Enforcement Reports Database
+```{r # Loading data, include=FALSE}
+Enforcement_2018_clean <- read_excel("~/OneDrive - University of Florida/1_PhD_UF_SNRE/1_Semesters/2_Semesters_2021_2024/RA_work/1_Sea_Turtles_Florida_Project/1_Data_analysis/2_Enforcement_reports_pdfs/FWC LE Reports 2018-2022/2018/Enforcement_2018_clean.xlsx")
+
+Enforcement_2019_clean <- read_excel("~/OneDrive - University of Florida/1_PhD_UF_SNRE/1_Semesters/2_Semesters_2021_2024/RA_work/1_Sea_Turtles_Florida_Project/1_Data_analysis/2_Enforcement_reports_pdfs/FWC LE Reports 2018-2022/2019/Enforcement_2019_clean.xlsx")
+
+Enforcement_2020_clean <- read_excel("~/OneDrive - University of Florida/1_PhD_UF_SNRE/1_Semesters/2_Semesters_2021_2024/RA_work/1_Sea_Turtles_Florida_Project/1_Data_analysis/2_Enforcement_reports_pdfs/FWC LE Reports 2018-2022/2020/Enforcement_2020_clean.xlsx")
+
+Enforcement_2021_clean <- read_excel("~/OneDrive - University of Florida/1_PhD_UF_SNRE/1_Semesters/2_Semesters_2021_2024/RA_work/1_Sea_Turtles_Florida_Project/1_Data_analysis/2_Enforcement_reports_pdfs/FWC LE Reports 2018-2022/2021/Enforcement_2021_clean.xlsx")
+
+Enforcement_2022_clean <- read_excel("~/OneDrive - University of Florida/1_PhD_UF_SNRE/1_Semesters/2_Semesters_2021_2024/RA_work/1_Sea_Turtles_Florida_Project/1_Data_analysis/2_Enforcement_reports_pdfs/FWC LE Reports 2018-2022/2022/Enforcement_2022_clean.xlsx")
+
+Combined_data_2018_2022 <- bind_rows(Enforcement_2018_clean, Enforcement_2019_clean,
+                                     Enforcement_2020_clean, Enforcement_2021_clean,
+                                     Enforcement_2022_clean)
+
+```
+
+```{r, Preprocesing data, include=FALSE}
+# Transforming character variables to factors
+Combined_data_2018_2022_factor <- Combined_data_2018_2022 %>% 
+  mutate(Year = as_factor(Year)) %>% 
+  mutate(Date = as_factor(Date)) %>%
+  mutate(Florida_regions = as_factor(Florida_regions)) %>% 
+  mutate(Enforcement_events = as_factor(Enforcement_events)) %>%
+  mutate(Locations = as_factor(Locations)) %>% 
+  mutate(Report_section = as_factor(Report_section))
+
+# Create a new dataset excluding specified values from Florida_regions
+Combined_data_2018_2022_factor_1 <- Combined_data_2018_2022_factor %>%
+  filter(!Locations %in% c("ARTICLE HEAD", "ARTICLE_HEAD", "Head")) %>%
+  filter(!Report_section %in% c("ARTICLE HEAD")) %>%
+  filter(!Florida_regions %in% c("ARTICLE_HEAD")) %>%
+  droplevels() %>% 
+  rename(Report_text = concatenated_text,
+         Record_ID = Numerical_ID)
+
+# Verifying levels in each column
+levels(Combined_data_2018_2022_factor_1$Florida_regions)
+levels(Combined_data_2018_2022_factor_1$Enforcement_events)
+levels(Combined_data_2018_2022_factor_1$Locations)
+levels(Combined_data_2018_2022_factor_1$Report_section)
+
+Enforcement_events_NO_HEAD <- Combined_data_2018_2022_factor_1 %>% 
+  select(- Report_section)
+```
+
+```{r # Cleaning factors of each column, include=FALSE}
+Enforcement_events_NO_HEAD_clean <- Enforcement_events_NO_HEAD %>% 
+  mutate(Enforcement_events = fct_collapse(Enforcement_events,
+                                           "OFFSHORE PATROLS" =
+                                             c("OFFSHORE PATROL VESSEL SENTINEL",
+                                               "OFFSHORE", "OFFSHORE PATROL VESSEL",
+                                               "OFFSHORE PATROL", "OFFSHORE PATROL VESSEL FIN CAT",
+                                               "OFFSHORE PATROL VESSEL CRYSTAL RIVER FIN CAT",
+                                               "OFFSHORE PATROL VESSEL AND FIN CAT",
+                                               "OFFSHORE PATROL VESEEL SENTINEL"),
+                                           "DIRECTED CONSERVATION PATROLS" = 
+                                             c("DIRECTED PATROL", "DIRECTED PATROLS",
+                                               "DIRECTED CONSERVATION PATROLS"),
+                                           "COMMUNITY ORIENTED POLICING AND EXPANDING PARTICIPATION" =
+                                             c("COMMUNITY ORIENTED POLICING AND EXPANDING PARTICIPATION IN CONSERVATION",
+                                               "COMMUNITY ORIENTED POLICING AND EXPANDING PARTICIPATION",
+                                               "COMMUNITY ORIENTED POLICE OUTREACH"),
+                                           "WILDLIFE RESPONSE, ASSISTANCE AND RESCUE" = 
+                                             c("WILDLIFE RESPONSE", "WILDLIFE ASSISTANCE","WILDLIFE RESCUE",
+                                               "MAJOR WILDLIFE ASSISTANCE"),
+                                           "EDUCATIONAL/OUTREACH" = c("COMMUNITY OUTREACH",
+                                                                      "EDUCATIONAL/OUTREACH",
+                                                                      "OUTREACH", "OUTREACH EVENT"),
+                                           "EMERGENCY RESPONSE OR SERVICES" = c("EMERGENCY RESPONSE OR SERVICES",
+                                                                                "EMERGENCY RESPONSE EFFORTS",
+                                                                                "HURRICANE IAN DISASTER RELIEF"),
+                                           "SEARCH AND RESCUE" = c("SEARCH AND RESCUE", "RESCUES")))
+
+
+Enforcement_events_NO_HEAD_clean <- Enforcement_events_NO_HEAD_clean %>% 
+  mutate(Locations = fct_collapse(Locations,
+                                  "OFFSHORE" = c("OFFSHORE PATROL VESSEL CRYSTAL RIVER FIN CAT",
+                                                 "OFFSHORE PATROL VESSEL SENTINEL",
+                                                 "OFFSHORE PATROL VESSEL (OPV) SENTINEL",
+                                                 "OFFSHORE",
+                                                 "OFFSHORE PATROL VESSEL FINCAT",
+                                                 "OFFSHORE PATROL VESSEL"),
+                                  "SENTINEL COUNTY" = c("SENTINEL COUNTY", "SENTINEL"),
+                                  "FEDERAL WATERS" = c("FEDERAL WATERS",
+                                                       "MULTIPLE OFFSHORE COUNTY/FEDERAL WATERS")))
+                        
+```
+
+- The following data set contains information extracted from the weekly law enforcement reports created by the Division of Law Enforcement of the Florida Wildlife Commission (FWC). The data was downloaded from the following website: https://myfwc.com/about/inside-fwc/le/weekly-reports/ 
+
+- Law enforcement activities are divided in 5 main regions. Each regions has its own representatives. The following data set can be explored within each region.
+
+**Map showing the 5 main regions in the State of Florida**
+
+```{r, echo=FALSE, out.with="20%"}
+knitr::include_graphics("Florida_Regions.jpeg")
+```
+
+# Data set
+The following table shows a sample of the databased.
+```{r, Print the data, echo=FALSE}
+df_small <- head(Enforcement_events_NO_HEAD_clean, 100)
+# transposed_df_small <- t(df_small)
+# Create a table using knitr::kable
+table <- df_small %>% 
+  kable() %>%
+  # column_spec(8, width = "30em") %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F)
+# Make the table scrollable
+scroll_table <- scroll_box(table, width = "100%", height = "200px")
+scroll_table
+```
+
+# Descriptive Statistics
+### *Distribution Enforcement Events*
+The law enforcement reports are divided by different enforcement activities. Within those activities, reporting cases was the most frequent activity (>60%), followed by community-oriented policing, search and rescue, expanding participation in conservation, directed conservation patrols, and major wildlife assistance.
+The following graph shows the distribution of the different law enforcement activities done between 2018 and 2022 across the different Florida regions. 
+```{r Distribution of enforcement events, echo=FALSE}
+Enforcement_events_frequency <- Enforcement_events_NO_HEAD_clean  %>%
+  tabyl(Enforcement_events) %>% 
+  arrange(desc(n))
+
+# Reorder the categories based on the values
+Enforcement_events_frequency$Enforcement_events <- factor(Enforcement_events_frequency$Enforcement_events, levels = Enforcement_events_frequency$Enforcement_events[order(Enforcement_events_frequency$n)])
+
+# Plotting 1
+Enforcement_events_frequency %>%
+  ggplot(aes(x = Enforcement_events, y = percent)) +
+  geom_bar(stat = "identity") +
+  #theme_classic() +
+  # ggtitle("Distribution of Enforcement Events") +
+  ylab("% of Events") +
+  xlab(" ") +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 0.9))  +
+  theme(axis.text.x = element_text(size = 8, hjust = 0.1),
+        axis.text.y = element_text(size = 6),
+        plot.title = element_text(size = 12, hjust = 0.5)) + 
+  coord_flip()
+
+```
+
+### *Enforcement Events by Regions*
+The following graph shows the distribution of enforcement events in the different regions of Florida. Northwest region has most cases reported, while South Region B has the lowest cases reported.
+```{r Enforcement activities by region, echo=FALSE, fig.align='center', message=FALSE, warning=FALSE}
+Enforcement_frequency_region <- Enforcement_events_NO_HEAD_clean %>% 
+  group_by(Florida_regions, Enforcement_events) %>% 
+  summarize(Freq = n()) %>% 
+  mutate(Prop = Freq / sum(Freq)) %>% 
+  arrange(desc(Prop))
+
+# Plotting 1
+Enforcement_frequency_region %>%
+  ggplot(aes(x = Florida_regions, y = Prop, fill= Enforcement_events)) +
+  geom_bar(stat = "identity", position = "stack") +
+  theme_classic() +
+  # ggtitle("Distribution Enforcement Events by Regions") +
+  ylab("Proportions") +
+  xlab(" ") +
+  theme(axis.text.x = element_text(size = 6, angle = 45, hjust = 1),
+        axis.text.y = element_text(size = 6),
+        plot.title = element_text(size = 12, hjust = 0.5)) +
+  theme(legend.text = element_text(size = 5))
+```
+
+# Enforcement reports for Turtles
+Out of 6749 law enforcement reports, 150 (2.2%) reports mention something about turtles.
+```{r, echo=FALSE, fig.align='center', message=FALSE, warning=FALSE}
+data(stop_words)
+# Text preprocessing: remove capital letters and punctuation
+Text_analysis <- Enforcement_events_NO_HEAD_clean %>% 
+  mutate(Report_text = tolower(Report_text)) 
+
+# This gives me 156 law enforcement cases where the word turtle/s were mentioned
+sea_turtle_reports <- Text_analysis %>%
+  filter(str_detect(Report_text, regex("turtles|turtle", ignore_case = TRUE)))
+```
+
+```{r eval=FALSE, fig.align='center', message=FALSE, warning=FALSE, include=FALSE}
+sea_turtle_reports_1 <- Text_analysis %>%
+  filter(str_detect(Report_text, regex("\\bturtles\\b|\\bturtle\\b",
+                                       ignore_case = TRUE)))
+
+violations_reports <- Text_analysis %>%
+  filter(str_detect(Report_text, regex("ted", ignore_case = TRUE)))
+
+violations_reports_1 <- Text_analysis %>%
+  filter(str_detect(Report_text, regex("\\bted\\b", ignore_case = TRUE)))
+
+reports_all_keywords <- Text_analysis %>%
+  filter(str_detect(Report_text, regex(
+    "\\b(turtles|turtle|egg|nest|skull|shell|poaching|harvest|catch|trade|trafficking|killing|possession|harassment|disturbance|seize|violation|issue|charge|arrest|citation|cite|undersized|inspection|light|disorientation|ted)\\b", 
+    ignore_case = TRUE
+  )))
+
+reports_keywords_turtles <- Text_analysis %>%
+  filter(str_detect(Report_text, regex(
+    "turtles|turtle|egg|nest|skull|shell", 
+    ignore_case = TRUE
+  )))
+
+# This code gives me 150 text reports as result.
+reports_keywords_turtles_violations <- Text_analysis %>%
+  filter(
+    str_detect(Report_text, regex("\\bturtles\\b|\\bturtle\\b", ignore_case = TRUE)) &
+    str_detect(Report_text, regex("(egg|nest|skull|shell|poaching|harvest|catch|trade|trafficking|killing|possession|harassment|disturbance|seize|violation|issue|charge|arrest|citation|cite|undersized|inspection|light|disorientation|ted)", ignore_case = TRUE))
+  )
+
+library(openxlsx)
+
+write.xlsx(sea_turtle_reports, file = "~/OneDrive - University of Florida/1_PhD_UF_SNRE/1_Semesters/2_Semesters_2021_2024/RA_work/1_Sea_Turtles_Florida_Project/1_Data_analysis/2_Enforcement_reports_pdfs/FWC LE Reports 2018-2022/sea_turtle_reports_2018_2022.xlsx")
+
+```
+
+## *What are the Florida regions with more law enforcement reports about turtles?*
+```{r, echo=FALSE, fig.align='center', message=FALSE, warning=FALSE}
+Frequency_Reports_turtles_region <- sea_turtle_reports %>% 
+  group_by(Florida_regions) %>% 
+  summarize(Freq = n()) %>% 
+  mutate(Prop = Freq / sum(Freq)) %>% 
+  arrange(desc(Prop))
+
+# Reorder the Florida_regions factor based on Prop values
+Frequency_Reports_turtles_region <- Frequency_Reports_turtles_region %>%
+  mutate(Florida_regions = fct_reorder(Florida_regions, Prop, .desc = TRUE))
+
+# Plotting
+Frequency_Reports_turtles_region %>%
+  ggplot(aes(x = Florida_regions, y = Prop)) +
+  geom_bar(stat = "identity", position = "stack") +
+  theme_classic() +
+  ylab("Proportions") +
+  xlab(" ") +
+  theme(axis.text.x = element_text(size = 8, angle = 45, hjust = 1),
+        axis.text.y = element_text(size = 6),
+        plot.title = element_text(size = 12, hjust = 0.5)) +
+  theme(legend.text = element_text(size = 5))
+
+```
+
+## *What are the law enforcement events are related to turtles?*
+```{r, echo=FALSE, fig.align='center', message=FALSE, warning=FALSE}
+Frequency_Reports_turtles_events <- sea_turtle_reports %>% 
+  group_by(Enforcement_events) %>% 
+  summarize(Freq = n()) %>% 
+  mutate(Prop = Freq / sum(Freq)) %>% 
+  arrange(desc(Prop))
+
+# Reorder the Florida_regions factor based on Prop values
+Frequency_Reports_turtles_events <- Frequency_Reports_turtles_events %>%
+  mutate(Enforcement_events = fct_reorder(Enforcement_events, Prop, .desc = TRUE))
+
+# Plotting
+Frequency_Reports_turtles_events %>%
+  ggplot(aes(x = Enforcement_events, y = Prop)) +
+  geom_bar(stat = "identity", position = "stack") +
+  theme_classic() +
+  ylab("Proportions") +
+  xlab(" ") +
+  theme(axis.text.x = element_text(size = 8, angle = 45, hjust = 1),
+        axis.text.y = element_text(size = 6),
+        plot.title = element_text(size = 12, hjust = 0.5)) +
+  theme(legend.text = element_text(size = 5))
+
+```
+
+## *What are the most frequent words in the law enforcement reports related to turtles?*
+```{r, echo=FALSE, fig.align='center', message=FALSE, warning=FALSE}
+# Tokenize the text
+tidy_text <- sea_turtle_reports %>%
+  unnest_tokens(word, Report_text) %>%
+  anti_join(stop_words, by = "word")
+
+library(textstem)
+# Perform lemmatization
+tidy_text_lemmat <- tidy_text %>%
+  mutate(word = lemmatize_words(word))
+
+# Count word frequencies
+word_count_lemmat <- tidy_text_lemmat %>%
+  count(word, sort = TRUE)
+
+```
+```{r, Word Cloud, echo=FALSE, fig.align='center', message=FALSE, warning=FALSE}
+library(wordcloud)
+# Set graphical parameters for margins
+par(mar = c(1, 1, 1, 1)) 
+# Create a word cloud
+wordcloud(words = word_count_lemmat$word, freq = word_count_lemmat$n, min.freq = 1,
+          max.words = 100, random.order = FALSE, colors = brewer.pal(8, "Dark2"))
+```
+
+
+
+
+```{r eval=FALSE, include=FALSE}
+## Identifying keywords
+#What are the most frequent words?
+
+data(stop_words)
+
+# Text preprocessing: remove capital letters, punctuation, numbers
+Text_analysis <- sea_turtle_reports %>% 
+  mutate(Report_text = tolower(Report_text)) %>% 
+  mutate(Report_text = removePunctuation(Report_text)) %>% 
+  mutate(Report_text = str_replace_all(Report_text, "[[:digit:]]", ""))
+
+# Tokenize the text
+tidy_text <- Text_analysis %>%
+  unnest_tokens(word, Report_text) %>%
+  anti_join(stop_words, by = "word")
+
+library(textstem)
+# Perform lemmatization
+tidy_text_lemmat <- tidy_text %>%
+  mutate(word = lemmatize_words(word))
+```
+
+```{r eval=FALSE, include=FALSE}
+# Count word frequencies
+word_count_sea_turtle_df <- tidy_text %>%
+  count(word, sort = TRUE)
+
+word_count_sea_turtle_lemmat_df <- tidy_text_lemmat %>%
+  filter(!(word %in% c("äôs", "äù"))) %>% 
+  count(word, sort = TRUE)
+
+# Identifying if words that are unusually long or do not appear in a dictionary of valid words
+library(textdata) # Load a dictionary of valid words:
+data("words")
+valid_words <- words
+
+# Check for unusually long words
+long_words <- word_count_sea_turtle_lemmat_df %>%
+  filter(str_length(word) > 15)
+
+```
+
+```{r eval=FALSE, include=FALSE}
+# Download the list of valid English words
+valid_words_url <- "https://raw.githubusercontent.com/dwyl/english-words/master/words.txt"
+valid_words <- readLines(valid_words_url)
+
+# Function to split long words based on the dictionary
+split_long_word <- function(word, valid_words) {
+  n <- nchar(word)
+  for (i in 2:(n-1)) {
+    part1 <- substr(word, 1, i)
+    part2 <- substr(word, i+1, n)
+    if (part1 %in% valid_words & part2 %in% valid_words) {
+      return(c(part1, part2))
+    }
+  }
+  return(word)  # Return the original word if no split found
+}
+
+# Identify long words
+long_words <- word_count_sea_turtle_lemmat_df %>%
+  filter(str_length(word) > 15)
+
+# Apply the function to correct the long words
+corrected_words <- long_words %>%
+  mutate(corrected = map(word, ~ split_long_word(.x, valid_words)))
+
+# Flatten the corrected words
+corrected_words_flat <- corrected_words %>%
+  unnest(corrected)
+
+# Inspect the results
+View(corrected_words_flat)
+
+# Check the structure
+str(corrected_words_flat)
+
+```
+
+```{r eval=FALSE, include=FALSE}
+# Apply the function to correct the long words
+corrected_words <- tidy_text_lemmat %>%
+  mutate(corrected = map(word, ~ split_long_word(.x, valid_words)))
+
+# Flatten the corrected words
+corrected_words_flat <- corrected_words %>%
+  unnest(corrected)
+
+# Inspect the results
+View(corrected_words_flat)
+
+# Check the structure
+str(corrected_words_flat)
+
+
+```
+
+
+```{r eval=FALSE, include=FALSE}
+## Word cloud
+#The word äôs seems to be introduced in replacement of the apostrofi
+#The word äù was introduced instead of ""
+
+library(wordcloud)
+
+# Set graphical parameters for margins
+par(mar = c(1, 1, 1, 1))  # Adjust the margins as needed (bottom, left, top, right)
+# options(width=12, height=8)
+# Create a word cloud
+wordcloud(words = word_count_sea_turtle_lemmat_df$word,
+          freq = word_count_sea_turtle_lemmat_df$n, min.freq = 1,
+          max.words = 100, random.order = FALSE, colors = brewer.pal(8, "Dark2"),
+          scale = c(5, 0.5)) # Adjust the text size range (largest, smallest)
+
+```
+
+```{r eval=FALSE, include=FALSE}
+## Quantifying violations sea turtles
+# Keywords
+# I was thinking we could quantify the occurrence of various violations such as lighting disorientation events, TED violations, egg poaching, habitat disturbance, harassment, etc and then provide an illustrative description from the FWC reports and newspapers where available. I know there are a lot of open source AI applications for qualitative analysis so I am guessing you and I should chat about how best to describe the data.
+
+#Keywords: 
+#1. egg, nest, skull, shell
+#2. poaching, harvest, catch, trade, trafficking, killing, possession, harassment, disturbance.
+#3. seize, violation, issue, charge, arrest, citation, cite, undersized, inspection
+#4. light, disorientation, ted,
+
+#Steps:
+#1. What are the reports that talk about the key words?
+#1.1. How do I know how many different case are these?
+#2. What are the most words associated to each key words?
+
+```
+
+
+
+```{r eval=FALSE, include=FALSE}
+# Load necessary libraries
+library(dplyr)
+library(stringr)
+
+# Define keywords as lists
+keywords_1 <- c("egg", "nest", "skull", "shell")
+keywords_2 <- c("poaching", "harvest", "catch", "trade", "trafficking", "killing", "possession", "harassment", "disturbance")
+keywords_3 <- c("seize", "violation", "issue", "charge", "arrest", "citation", "cite", "undersized", "inspection")
+keywords_4 <- c("light", "disorientation", "ted")
+
+# Combine all keywords into a single list
+all_keywords <- c(keywords_1, keywords_2, keywords_3, keywords_4)
+
+# Function to filter the Report_text for keywords
+filter_keywords <- function(data, keywords) {
+  pattern <- paste(keywords, collapse = "|")
+  filtered_data <- data %>%
+    filter(str_detect(Report_text, regex(pattern, ignore_case = TRUE)))
+  return(filtered_data)
+}
+
+# Apply the filter function to the Text_analysis dataframe
+filtered_text_analysis <- filter_keywords(Text_analysis, all_keywords)
+
+# Display the filtered dataframe
+view(filtered_text_analysis)
+
+# Further analyze the content of the filtered reports
+# For example, count the occurrences of each keyword
+keyword_counts <- filtered_text_analysis %>%
+  mutate(keyword_present = str_extract_all(Report_text, regex(paste(all_keywords, collapse = "|"), ignore_case = TRUE))) %>%
+  unnest(keyword_present) %>%
+  count(keyword_present)
+
+# Display the keyword counts
+print(keyword_counts)
+
+```
+
+```{r eval=FALSE, include=FALSE}
+library(tidyverse)
+library(tidytext)
+
+keywords <- list(
+  lighting_disorientation = c("lighting disorientation", "disorientation"),
+  TED_violations = c("TED violation", "TED"),
+  egg_poaching = c("egg poaching", "poaching"),
+  habitat_disturbance = c("habitat disturbance", "disturbance"),
+  harassment = c("harassment", "harass"),
+  trade = c("trade", "trafficking"),
+  killing = c("killing", "kill", "dead")
+)
+
+count_keywords <- function(text, keywords) {
+  counts <- sapply(keywords, function(kw) {
+    sum(str_detect(text, regex(paste(kw, collapse = "|"), ignore_case = TRUE)))
+  })
+  return(as.list(counts))
+}
+
+keyword_counts <- sea_turtle_reports %>%
+  rowwise() %>%
+  mutate(counts = list(count_keywords(Report_text, keywords))) %>%
+  unnest_wider(counts)
+
+summary_counts <- keyword_counts %>%
+  select(names(keywords)) %>%
+  summarise(across(everything(), sum, na.rm = TRUE))
+
+summary_counts
+
+```
